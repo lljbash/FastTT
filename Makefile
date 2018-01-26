@@ -1,7 +1,7 @@
 CXX = g++-7
 LINK.o = $(LINK.cc)
 DEBUG ?= 0
-CXXFLAGS = -std=c++14 -Wall -Wextra
+CXXFLAGS = -std=c++17 -Wall -Wextra
 ifeq ($(DEBUG), 1)
 	CXXFLAGS += -DDEBUG -ggdb
 else

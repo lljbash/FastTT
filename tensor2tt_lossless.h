@@ -1,3 +1,5 @@
+#pragma once
+
 #include "xerus/ttNetwork.h"
 
 namespace xerus {
