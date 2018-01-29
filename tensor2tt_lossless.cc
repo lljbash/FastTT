@@ -10,13 +10,14 @@ using namespace std;
 
 namespace xerus {
 
-auto depar01(Tensor a) {
+auto depar01(Tensor &&a) {
     const size_t d = a.degree();
     REQUIRE(d == 2, "Input of depar01 must be a matrix");
     const size_t nrows = a.dimensions.at(0);
     const size_t ncols = a.dimensions.at(1);
     
     vector<u32string> a_col_nze(ncols);
+    a.use_sparse_representation();
     const auto &data = a.get_sparse_data();
     for (const auto &entry : data) {
         auto indices = Tensor::position_to_multiIndex(entry.first, a.dimensions);
@@ -61,16 +62,49 @@ auto depar01(Tensor a) {
         t_data.try_emplace(pos, 1);
     }
     
-    auto b = make_unique<Tensor>(b_size, Tensor::Representation::Sparse, Tensor::Initialisation::None);
-    b->get_unsanitized_sparse_data() = move(b_data);
-    auto t = make_unique<Tensor>(t_size, Tensor::Representation::Sparse, Tensor::Initialisation::None);
-    t->get_unsanitized_sparse_data() = move(t_data);
+    auto b = Tensor(b_size, Tensor::Representation::Sparse, Tensor::Initialisation::None);
+    b.get_unsanitized_sparse_data() = move(b_data);
+    auto t = Tensor(t_size, Tensor::Representation::Sparse, Tensor::Initialisation::None);
+    t.get_unsanitized_sparse_data() = move(t_data);
     
     return make_tuple(move(b), move(t));
 }
 
-TTTensor tensor2tt_lossless(Tensor b, int vpos) {
-    const size_t d = b.degree();
+inline auto depar01(const Tensor &a) {
+    Tensor b(a);
+    return depar01(move(b));
+}
+
+void parrounding(TTTensor &a, size_t vpos) {
+    const size_t d = a.degree();
+    for (size_t i = 0; i < vpos; ++i) {
+        auto &comp = a.component(i);
+        const auto n = comp.dimensions;
+        comp.reinterpret_dimensions({n.at(0) * n.at(1), n.at(2)});
+        auto [b, t] = depar01(move(comp));
+        b.reinterpret_dimensions({n.at(0), n.at(1), b.dimensions.back()});
+        a.set_component(i, move(b));
+        auto &succ = a.component(i+1);
+        contract(t, t, succ, 1);
+        a.set_component(i+1, move(t));
+    }
+    for (size_t i = d-1; i > vpos; --i) {
+        auto &comp = a.component(i);
+        const auto n = comp.dimensions;
+        comp.reinterpret_dimensions({n.at(0), n.at(1) * n.at(2)});
+        reshuffle(comp, comp, {1, 0});
+        auto [b, t] = depar01(move(comp));
+        reshuffle(b, b, {1, 0});
+        b.reinterpret_dimensions({b.dimensions.front(), n.at(1), n.at(2)});
+        a.set_component(i, move(b));
+        auto &pre = a.component(i-1);
+        contract(t, pre, false, t, true, 1);
+        a.set_component(i-1, move(t));
+    }
+}
+
+TTTensor tensor2tt_lossless(Tensor a, int vpos) {
+    const size_t d = a.degree();
     REQUIRE(d >= 2, "Invalid Tensor");
     vpos %= d;
     if (vpos < 0) {
@@ -78,9 +112,10 @@ TTTensor tensor2tt_lossless(Tensor b, int vpos) {
     }
     
     TTTensor u(d);
-    const auto &data = b.get_sparse_data();
+    a.use_sparse_representation();
+    const auto &data = a.get_sparse_data();
     unordered_map<size_t, vector<pair<size_t, value_t>>> submats;
-    const auto &n = b.dimensions;
+    const auto &n = a.dimensions;
     size_t pn = 1;
     for (size_t i = vpos + 1; i < d; ++i) {
         pn *= n.at(i);
@@ -118,6 +153,8 @@ TTTensor tensor2tt_lossless(Tensor b, int vpos) {
         }
         ++index;
     }
+    
+    parrounding(u, vpos);
     
     return u;
 }
