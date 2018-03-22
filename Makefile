@@ -1,26 +1,28 @@
 CXX = g++-7
-LINK.o = $(LINK.cc)
-DEBUG ?= 0
 CXXFLAGS = -std=c++17 -Wall -Wextra
-ifeq ($(DEBUG), 1)
-	CXXFLAGS += -DDEBUG -ggdb
-else
-	CXXFLAGS += -O3 -DNDEBUG -funroll-loops -fopenmp -D_GLIBCXX_PARALLEL -march=native
-endif
-OUTPUT_OPTION = -MMD -MP -o $@
+DEBUG ?= 0
+DEBUG_FLAGS = -Og -DDEBUG -g
+RELEASE_FLAGS = -O3 -DNDEBUG -funroll-loops -fopenmp -march=native
+OUTPUT_OPTION=-MMD -MP -o $@
 LDLIBS = -lxerus -lxerus_misc
+EXEC = test
 
 SRC = $(wildcard *.cc)
 OBJ = $(SRC:.cc=.o)
 DEP = $(SRC:.cc=.d)
 
-.PHONY: all clean
+ifeq ($(DEBUG), 1)
+	CXXFLAGS += $(DEBUG_FLAGS)
+else
+	CXXFLAGS += $(RELEASE_FLAGS)
+endif
 
-EXEC = test
+.PHONY: all clean
 
 all: $(EXEC)
 
-test: test.o tensor2tt_lossless.o
+$(EXEC): $(OBJ)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 -include $(DEP)
 
