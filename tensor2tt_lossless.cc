@@ -10,7 +10,7 @@ using namespace std;
 
 namespace xerus {
 
-auto depar01(Tensor &&a) {
+auto depar01(Tensor a) {
     const size_t d = a.degree();
     REQUIRE(d == 2, "Input of depar01 must be a matrix");
     const size_t nrows = a.dimensions.at(0);
@@ -68,11 +68,6 @@ auto depar01(Tensor &&a) {
     t.get_unsanitized_sparse_data() = move(t_data);
     
     return make_tuple(move(b), move(t));
-}
-
-inline auto depar01(const Tensor &a) {
-    Tensor b(a);
-    return depar01(move(b));
 }
 
 void parrounding(TTTensor &a, size_t vpos) {
