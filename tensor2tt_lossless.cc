@@ -114,14 +114,14 @@ void parrounding(TTTensor &a, size_t vpos) {
 
 void qttrounding(TTTensor &a, size_t vpos) {
     const size_t d = a.degree();
-    for (size_t i = 0; i < vpos; ++i) {
+    for (size_t i = vpos; i < d-1; ++i) {
         Tensor U, S, Vt;
         calculate_svd(U, S, Vt, a.component(i), 2, 0, EPSILON);
         a.set_component(i, move(U));
         auto lhs = contract(S, Vt, 1);
         a.set_component(i+1, contract(lhs, a.component(i+1), 1));
     }
-    for (size_t i = d-1; i > vpos; --i) {
+    for (size_t i = vpos; i > 0; --i) {
         Tensor U, S, Vt;
         calculate_svd(U, S, Vt, a.component(i), 1, 0, EPSILON);
         a.set_component(i, move(Vt));
