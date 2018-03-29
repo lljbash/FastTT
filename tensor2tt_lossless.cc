@@ -112,6 +112,24 @@ void parrounding(TTTensor &a, size_t vpos) {
     }
 }
 
+void qttrounding(TTTensor &a, size_t vpos) {
+    const size_t d = a.degree();
+    for (size_t i = 0; i < vpos; ++i) {
+        Tensor U, S, Vt;
+        calculate_svd(U, S, Vt, a.component(i), 2, 0, EPSILON);
+        a.set_component(i, move(U));
+        auto lhs = contract(S, Vt, 1);
+        a.set_component(i+1, contract(lhs, a.component(i+1), 1));
+    }
+    for (size_t i = d-1; i > vpos; --i) {
+        Tensor U, S, Vt;
+        calculate_svd(U, S, Vt, a.component(i), 1, 0, EPSILON);
+        a.set_component(i, move(Vt));
+        auto rhs = contract(U, S, 1);
+        a.set_component(i-1, contract(a.component(i-1), rhs, 1));
+    }
+}
+
 TTTensor tensor2tt_lossless(Tensor a, int vpos) {
     const size_t d = a.degree();
     REQUIRE(d >= 2, "Invalid Tensor");
@@ -164,6 +182,8 @@ TTTensor tensor2tt_lossless(Tensor a, int vpos) {
     }
     
     parrounding(u, vpos);
+
+    qttrounding(u, vpos);
     
     return u;
 }

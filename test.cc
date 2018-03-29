@@ -31,15 +31,22 @@ int main(int argc, char *argv[]) {
     auto end = chrono::high_resolution_clock::now();
     
     cout << "n = " << n << ", d = " << d << ", N = " << N << endl;
-    
     cout << "time: " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << "ms"  << endl;
-    
     auto xx = Tensor(tt);
     auto eps = (x - xx).frob_norm() / x.frob_norm();
     cout << "eps: " << setprecision(10) << eps << endl;
-    
     cout << "ranks: ";
     for (auto r : tt.ranks()) {
+        cout << r << " ";
+    }
+    cout << endl;
+    
+    begin = chrono::high_resolution_clock::now();
+    auto ttsvd = TTTensor(x);
+    end = chrono::high_resolution_clock::now();
+    cout << "TTSVD time: " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << "ms"  << endl;
+    cout << "TTSVD ranks: ";
+    for (auto r : ttsvd.ranks()) {
         cout << r << " ";
     }
     cout << endl;
