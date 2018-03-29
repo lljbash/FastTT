@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <memory>
+#include <limits>
 #include "xerus/misc/check.h"
 #include "xerus/misc/internal.h"
 
@@ -10,41 +11,54 @@ using namespace std;
 
 namespace xerus {
 
+void printMatrix(Tensor a) {
+    const size_t d = a.degree();
+    REQUIRE(d == 2, "unimplement");
+    const auto &n = a.dimensions;
+    const size_t nrows = n.at(0);
+    const size_t ncols = n.at(1);
+    cout << nrows << " " << ncols << endl;
+    for (size_t i = 0; i < nrows; ++i) {
+        for (size_t j = 0; j < ncols; ++j) {
+            cout << a[{i, j}] << " ";
+        }
+        cout << endl;
+    }
+    cout << endl;
+}
+
 auto depar01(Tensor a) {
     const size_t d = a.degree();
     REQUIRE(d == 2, "Input of depar01 must be a matrix");
     const size_t nrows = a.dimensions.at(0);
     const size_t ncols = a.dimensions.at(1);
     
-    vector<u32string> a_col_nze(ncols);
+    vector<size_t> a_col_nze(ncols, numeric_limits<size_t>::max());
     a.use_sparse_representation();
     const auto &data = a.get_sparse_data();
     for (const auto &entry : data) {
+        if (entry.second != 1) {
+            cout << entry.second << endl;
+        }
         auto indices = Tensor::position_to_multiIndex(entry.first, a.dimensions);
         size_t index_row = indices.at(0);
         size_t index_col = indices.at(1);
-        a_col_nze.at(index_col).push_back(static_cast<char32_t>(index_row));
+        a_col_nze.at(index_col) = index_row;
     }
     
-    unordered_map<u32string, size_t> hashmap;
+    vector<size_t> hashmap(nrows, numeric_limits<size_t>::max());
     vector<vector<size_t>> b_indices;
     vector<vector<size_t>> t_indices;
-    vector<int> a_col_newid(ncols);
     size_t cnt = 0;
     for (size_t i = 0; i < ncols; ++i) {
-        if (a_col_nze.at(i).empty()) {
+        const size_t &index_row = a_col_nze.at(i);
+        if (index_row >= nrows) {
             continue;
         }
-        const auto &sequence = a_col_nze.at(i);
-        const auto ret = hashmap.try_emplace(sequence, cnt);
-        const size_t newid = ret.first->second;
-        a_col_newid.at(i) = newid;
-        if (ret.second) {
-            for (auto ch : sequence) {
-                size_t index_row = static_cast<size_t>(ch);
-                b_indices.push_back({index_row, cnt});
-            }
-            ++cnt;
+        size_t &newid = hashmap.at(index_row);
+        if (newid >= ncols) {
+            b_indices.push_back({index_row, cnt});
+            newid = cnt++;
         }
         t_indices.push_back({newid, i});
     }

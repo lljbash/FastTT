@@ -43,6 +43,15 @@ int main(int argc, char *argv[]) {
         cout << r << " ";
     }
     cout << endl;
+    
+   /* 
+    for (int i = 0; i < d; ++i) {
+        auto comp = tt.get_component(i);
+        comp.reinterpret_dimensions({comp.dimensions.at(0), comp.dimensions.at(1) * comp.dimensions.at(2)});
+        printMatrix(comp);
+    }
+    */
+    
     return 0;
 }
 
