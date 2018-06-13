@@ -5,6 +5,8 @@
 #include <chrono>
 #include <functional>
 #include <string>
+#include <cxxopts.hpp>
+#include <xerus/algorithms/randomSVD.h>
 #include "tensor2tt_lossless.h"
 
 using namespace std;
@@ -25,52 +27,94 @@ void run_test(const std::function<TTTensor(const Tensor&)> &f, const Tensor &x, 
         vout << r << " ";
     }
     vout << endl;
-    
-    //for (size_t i = 0; i < tt.degree(); ++i) {
-        //auto comp = tt.get_component(i);
-        //comp.reinterpret_dimensions({comp.dimensions.at(0), comp.dimensions.at(1) * comp.dimensions.at(2)});
-        //printMatrix(comp);
-    //}
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 4 || argc > 5) {
-        cerr << "Ussage: test n d N [vpos]" << endl;
-        return 1;
-    }
-    int n = atoi(argv[1]);
-    int d = atoi(argv[2]);
-    int N = atoi(argv[3]);
-    assert(d > 0 && n > 0 && N >= 0);
-    int vpos;
-    if (argc != 5) {
-        vpos = d / 2;
+    cxxopts::Options options("test", "Test fast T2TT.");
+    options.add_options()
+        ("f,file", "Input file name", cxxopts::value<std::string>())
+        ("R,random", "Use random generated n^d tesors as input instead")
+        ("n", "Parameter n of the random generated tensor", cxxopts::value<int>()->default_value("4"))
+        ("d", "Parameter d of the random generated tensor", cxxopts::value<int>()->default_value("10"))
+        ("N,nnz", "The number of nonzero elements of the random generated tensor", cxxopts::value<int>()->default_value("500"))
+        ("F,fixed_rank", "Generate fixed-rank tesors")
+        ("r,rank", "The TT-ranks of generated tensors", cxxopts::value<int>()->default_value("50"))
+        ("s,sparsity", "The sparsity of generated cores", cxxopts::value<double>()->default_value("0.02"))
+        ("ttsvd", "Test TT-SVD")
+        ("rttsvd", "Test Randomized TT-SVD")
+        ("S,simple", "Output simple result")
+        ;
+    const auto args = [&options, &argc, &argv]() {
+        try {
+            return options.parse(argc, argv);
+        }
+        catch (cxxopts::OptionParseException) {
+            cout << options.help() << endl;
+            exit(1);
+        }
+    } ();
+    int n;
+    int d;
+    int N;
+    int r;
+    double sp;
+    Tensor x;
+    if (args.count("random")) {
+        n = args["n"].as<int>();
+        d = args["d"].as<int>();
+        N = args["N"].as<int>();
+        r = args["r"].as<int>();
+        sp = args["s"].as<double>();
+        if (!(d > 0 && n > 0 && N >= 0 && r > 0 && sp > 0 && sp < 1)) {
+            cerr << "Invalid args!" << endl;
+            return 1;
+        }
+        if (!args.count("fixed_rank")) {
+            x = Tensor::random(vector<size_t>(d, n), static_cast<size_t>(N));
+        }
+        else {
+            x = Tensor::random({static_cast<size_t>(n), static_cast<size_t>(r)}, n * r * sp);
+            for (int i = 1; i < d - 1; ++i) {
+                auto y = Tensor::random({static_cast<size_t>(r), static_cast<size_t>(n), static_cast<size_t>(r)},
+                                        r * n * r * sp);
+                contract(x, x, y, 1);
+            }
+            auto y = Tensor::random({static_cast<size_t>(r), static_cast<size_t>(n)}, r * n * sp);
+            contract(x, x, y, 1);
+        }
+        x.use_sparse_representation();
+        N = x.get_sparse_data().size();
     }
     else {
-        vpos = atoi(argv[4]);
+        return 1;
     }
-    assert(vpos >= 0 && vpos < d);
-    
-    const char *env_TTSVD = getenv("TTSVD");
-    const char *env_SIMPLE = getenv("SIMPLE");
-    const bool simple = (env_SIMPLE && *env_SIMPLE == '1');
+    const bool simple = args.count("simple");
     ofstream nout("/dev/null");
     ostream &sout = simple ? cout : nout;
     ostream &vout = !simple ? cout : nout;
     
+    int vpos = d / 2;
     vout << "n = " << n << ", d = " << d << ", N = " << N << endl;
-    
-    vector<size_t> dims(d, n);
-    const auto x = Tensor::random(dims, static_cast<size_t>(N));
+    vout << "sparse: " << static_cast<double>(N) / pow(n, d) << endl;
     
     vout << "--------------------FLATT--------------------" << endl;
     run_test([vpos](auto &&x) { return tensor2tt_lossless(x, vpos); }, x, sout, vout);
 
-    if (env_TTSVD && *env_TTSVD == '1') {
+    if (args.count("ttsvd")) {
         vout << "--------------------TTSVD--------------------" << endl;
         auto y(x);
         y.use_dense_representation();
         run_test([](auto &&x) { return TTTensor(x); }, y, sout, vout);
+    }
+    else {
+        sout << 0 << endl;
+    }
+    
+    if (args.count("rttsvd")) {
+        vout << "----------------Random TTSVD-----------------" << endl;
+        auto y(x);
+        y.use_dense_representation();
+        run_test([d, r](auto &&x) { return randomTTSVD(x, vector<size_t>(d-1, r), vector<size_t>(d-1, 0)); }, y, sout, vout);
     }
     else {
         sout << 0 << endl;

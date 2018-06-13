@@ -1,8 +1,8 @@
-CXX = g++-7
+CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra
 DEBUG ?= 0
 DEBUG_FLAGS = -Og -DDEBUG -g
-RELEASE_FLAGS = -O3 -DNDEBUG -funroll-loops -fopenmp -march=native
+RELEASE_FLAGS = -O3 -DNDEBUG -funroll-loops -march=native -Xpreprocessor -fopenmp
 OUTPUT_OPTION=-MMD -MP -o $@
 LDLIBS = -lxerus -lxerus_misc
 EXEC = test
