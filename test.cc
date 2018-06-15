@@ -11,7 +11,7 @@
 #include <boost/graph/bandwidth.hpp>
 #include <cxxopts.hpp>
 #include <xerus/algorithms/randomSVD.h>
-#include "tensor2tt_lossless.h"
+#include "sptensor2tt.h"
 
 using namespace std;
 using namespace xerus;
@@ -180,7 +180,7 @@ int main(int argc, char *argv[]) {
     vout << "sparse: " << static_cast<double>(N) / pow(n, d) << endl;
     
     vout << "--------------------FLATT--------------------" << endl;
-    run_test([vpos](auto &&x) { return tensor2tt_lossless(x, vpos); }, x, sout, vout);
+    run_test([vpos](auto &&x) { return sptensor2tt(x, vpos); }, x, sout, vout);
 
     if (args.count("ttsvd")) {
         vout << "--------------------TTSVD--------------------" << endl;

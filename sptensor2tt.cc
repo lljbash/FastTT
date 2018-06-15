@@ -1,4 +1,4 @@
-#include "tensor2tt_lossless.h"
+#include "sptensor2tt.h"
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -10,22 +10,6 @@
 using namespace std;
 
 namespace xerus {
-
-void printMatrix(Tensor a) {
-    const size_t d = a.degree();
-    REQUIRE(d == 2, "unimplement");
-    const auto &n = a.dimensions;
-    const size_t nrows = n.at(0);
-    const size_t ncols = n.at(1);
-    cout << nrows << " " << ncols << endl;
-    for (size_t i = 0; i < nrows; ++i) {
-        for (size_t j = 0; j < ncols; ++j) {
-            cout << a[{i, j}] << " ";
-        }
-        cout << endl;
-    }
-    cout << endl;
-}
 
 auto depar01(Tensor a) {
     const size_t d = a.degree();
@@ -109,7 +93,7 @@ void parrounding(TTTensor &a, size_t vpos) {
     }
 }
 
-void qttrounding(TTTensor &a, size_t vpos) {
+void ttrounding(TTTensor &a, size_t vpos) {
     const size_t d = a.degree();
     for (size_t i = vpos; i < d-1; ++i) {
         Tensor U, S, Vt;
@@ -129,7 +113,7 @@ void qttrounding(TTTensor &a, size_t vpos) {
     }
 }
 
-TTTensor tensor2tt_lossless(Tensor a, int vpos) {
+TTTensor sptensor2tt(Tensor a, int vpos) {
     const size_t d = a.degree();
     REQUIRE(d >= 2, "Invalid Tensor");
     vpos %= d;
@@ -182,7 +166,7 @@ TTTensor tensor2tt_lossless(Tensor a, int vpos) {
     
     parrounding(u, vpos);
 
-    qttrounding(u, vpos);
+    ttrounding(u, vpos);
     
     return u;
 }
