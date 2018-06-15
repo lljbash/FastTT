@@ -37,9 +37,6 @@ auto depar01(Tensor a) {
     a.use_sparse_representation();
     const auto &data = a.get_sparse_data();
     for (const auto &entry : data) {
-        if (entry.second != 1) {
-            cout << entry.second << endl;
-        }
         auto indices = Tensor::position_to_multiIndex(entry.first, a.dimensions);
         size_t index_row = indices.at(0);
         size_t index_col = indices.at(1);
@@ -116,6 +113,7 @@ void qttrounding(TTTensor &a, size_t vpos) {
     const size_t d = a.degree();
     for (size_t i = vpos; i < d-1; ++i) {
         Tensor U, S, Vt;
+        a.component(i).use_dense_representation();
         calculate_svd(U, S, Vt, a.component(i), 2, 0, EPSILON);
         a.set_component(i, move(U));
         auto lhs = contract(S, Vt, 1);
@@ -123,6 +121,7 @@ void qttrounding(TTTensor &a, size_t vpos) {
     }
     for (size_t i = vpos; i > 0; --i) {
         Tensor U, S, Vt;
+        a.component(i).use_dense_representation();
         calculate_svd(U, S, Vt, a.component(i), 1, 0, EPSILON);
         a.set_component(i, move(Vt));
         auto rhs = contract(U, S, 1);
