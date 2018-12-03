@@ -4,7 +4,10 @@
 #include <fstream>
 #include <chrono>
 #include <functional>
+#include <vector>
 #include <string>
+#include <random>
+#include <boost/algorithm/string.hpp>
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/cuthill_mckee_ordering.hpp>
 #include <boost/graph/properties.hpp>
@@ -15,6 +18,11 @@
 
 using namespace std;
 using namespace xerus;
+
+void error(string message = "Error!") {
+    cerr << message << endl;
+    exit(1);
+}
 
 void run_test(const std::function<TTTensor(const Tensor&)> &f, const Tensor &x, ostream &sout, ostream &vout) {
     auto begin = chrono::high_resolution_clock::now();
@@ -36,18 +44,21 @@ void run_test(const std::function<TTTensor(const Tensor&)> &f, const Tensor &x, 
 int main(int argc, char *argv[]) {
     cxxopts::Options options("test", "Test fast T2TT.");
     options.add_options()
-        ("f,file", "Input file name", cxxopts::value<std::string>())
-        ("U, undirected", "If input graph is undirected ")
+        ("f,file", "Input file name", cxxopts::value<string>())
+        ("t,type", "Input file type: graph / image", cxxopts::value<string>()->default_value("unspecific"))
+        ("U,undirected", "If input graph is undirected")
+        ("O,obeserved", "The obeservation ratio of the image", cxxopts::value<double>()->default_value("0.01"))
         ("R,random", "Use random generated n^d tesors as input instead")
         ("n", "Parameter n of the tensor", cxxopts::value<int>()->default_value("4"))
         ("d", "Parameter d of the tensor", cxxopts::value<int>()->default_value("10"))
+        ("l,n_list", "Use a list of n instead of n^d", cxxopts::value<string>())
         ("N,nnz", "The number of nonzero elements of the random generated tensor", cxxopts::value<int>()->default_value("500"))
-        ("F,fixed_rank", "Generate fixed-rank tesors")
-        ("r,rank", "The TT-ranks of generated tensors", cxxopts::value<int>()->default_value("50"))
+        ("F,fixed_rank", "Generate fixed-rank tesors", cxxopts::value<int>()->implicit_value("50"))
         ("s,sparsity", "The sparsity of generated cores", cxxopts::value<double>()->default_value("0.02"))
         ("p", "Parameter p of FastTT", cxxopts::value<int>()->default_value("-1"))
+        ("r,max_rank", "Max ranks of the target tensor train", cxxopts::value<int>()->default_value(to_string(numeric_limits<int>::max())))
         ("ttsvd", "Test TT-SVD")
-        ("rttsvd", "Test Randomized TT-SVD")
+        ("rttsvd", "Test Randomized TT-SVD for given target rank", cxxopts::value<int>()->implicit_value("10"))
         ("S,simple", "Output simple result")
         ;
     const auto args = [&options, &argc, &argv]() {
@@ -59,53 +70,78 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
     } ();
-    int n = 0;
-    int d = 0;
-    int N = 0;
-    int r = 0;
-    double sp = 0;
+    vector<size_t> n_list;
+    if (args.count("n_list")) {
+        string n_list_str = args["n_list"].as<string>();
+        vector<string> n_str_list;
+        boost::split(n_str_list, n_list_str, [](char c) { return c < '0' || c > '9'; });
+        for (string n_str: n_str_list) {
+            if (!n_str.empty()) {
+                n_list.push_back(stoi(n_str));
+            }
+        }
+    }
+    else {
+        int n = args["n"].as<int>();
+        int d = args["d"].as<int>();
+        if (!(d > 0 && n > 0)) {
+            error("n and d must be positive integers!");
+        }
+        n_list = vector<size_t>(d, n);
+    }
+    int d = n_list.size();
+    int m = 1;
+    for (int n : n_list) {
+        m *= n;
+    }
     Tensor x;
+    int N = 0;
+    string type = args["type"].as<string>();
     if (args.count("random")) {
-        n = args["n"].as<int>();
-        d = args["d"].as<int>();
         N = args["N"].as<int>();
-        r = args["r"].as<int>();
-        sp = args["s"].as<double>();
-        if (!(d > 0 && n > 0 && N >= 0 && r > 0 && sp > 0 && sp < 1)) {
-            cerr << "Invalid args!" << endl;
-            return 1;
+        double sp = args["s"].as<double>();
+        if (!(N >= 0)) {
+            error("N must be a positive integer!");
+        }
+        if (!(sp > 0 && sp < 1)) {
+            error("sp must be a real number between 0 and 1!");
         }
         if (!args.count("fixed_rank")) {
-            x = Tensor::random(vector<size_t>(d, n), static_cast<size_t>(N));
+            x = Tensor::random(vector<size_t>(n_list), static_cast<size_t>(N));
         }
         else {
-            x = Tensor::random({static_cast<size_t>(n), static_cast<size_t>(r)}, n * r * sp);
+            int r = args["fixed_rank"].as<int>();
+            if (!(r > 0)) {
+                error("r must be a positive integer!");
+            }
+            x = Tensor::random({n_list.front(), static_cast<size_t>(r)}, n_list.front() * r * sp);
             for (int i = 1; i < d - 1; ++i) {
-                auto y = Tensor::random({static_cast<size_t>(r), static_cast<size_t>(n), static_cast<size_t>(r)},
+                auto n = n_list.at(i);
+                auto y = Tensor::random({static_cast<size_t>(r), n, static_cast<size_t>(r)},
                                         r * n * r * sp);
                 contract(x, x, y, 1);
             }
-            auto y = Tensor::random({static_cast<size_t>(r), static_cast<size_t>(n)}, r * n * sp);
+            auto y = Tensor::random({static_cast<size_t>(r), n_list.back()}, r * n_list.back() * sp);
             contract(x, x, y, 1);
         }
         x.use_sparse_representation();
         N = x.get_sparse_data().size();
     }
-    else {
+    else if (type == "graph") {
         ifstream fin(args["file"].as<string>());
         if (!fin.is_open()) {
             cerr << "Cannot open file " << args["file"].as<string>() << endl;
-            return -1;
+            exit(-1);
         }
-        n = args["n"].as<int>();
-        d = args["d"].as<int>();
-        size_t m = pow(n, d);
-        x = Tensor(vector<size_t>(d * 2, n));
+        auto nn_list = n_list;
+        nn_list.insert(nn_list.end(), n_list.begin(), n_list.end());
+        x = Tensor(nn_list);
         
         vector<pair<size_t, size_t>> edges;
-        auto index = [n, d](int a, int b) {
+        auto index = [n_list, d](int a, int b) {
             vector<size_t> ret;
             for (int i = 0; i < d; ++i) {
+                auto n = n_list[i];
                 ret.push_back(b % n);
                 ret.push_back(a % n);
                 b /= n;
@@ -125,7 +161,7 @@ int main(int argc, char *argv[]) {
                 continue;
             }
             istringstream line_in(line);
-            size_t a, b;
+            int a, b;
             line_in >> a >> b;
             if (a >= m || b >= m) {
                 continue;
@@ -162,11 +198,53 @@ int main(int argc, char *argv[]) {
                 x[index(b, a)] = 1;
             }
         }
-        x.reinterpret_dimensions(vector<size_t>(d, n * n));
+        for (auto &n : n_list) {
+            n *= n;
+        }
+        m *= m;
+        x.reinterpret_dimensions(n_list);
         x.use_sparse_representation();
-        n = n * n;
         N = x.get_sparse_data().size();
     }
+    else if (type == "image") {
+        ifstream fin(args["file"].as<string>());
+        if (!fin.is_open()) {
+            cerr << "Cannot open file " << args["file"].as<string>() << endl;
+            exit(-1);
+        }
+        double obeserved = args["obeserved"].as<double>();
+        int channels = 3;
+        int sz = m / channels;
+        if (!(obeserved > 0 && obeserved < 1)) {
+            error("The obeservation ratio must be a real number between 0 and 1!");
+        }
+        vector<bool> mask(sz, false);
+        N = static_cast<int>(floor(static_cast<double>(sz) * obeserved));
+        fill_n(mask.begin(), N, true);
+        N *= channels;
+        random_device rd;
+        mt19937 gen(rd());
+        shuffle(mask.begin(), mask.end(), gen);
+        map<size_t, value_t> x_data;
+        for (int i = 0; i < m; ++i) {
+            int pixel;
+            fin >> pixel;
+            if (mask[i/channels]) {
+                x_data.try_emplace(i, pixel);
+            }
+        }
+        x = Tensor(n_list, Tensor::Representation::Sparse, Tensor::Initialisation::None);
+        x.get_unsanitized_sparse_data() = move(x_data);
+    }
+    else {
+        error("You must specific a valid file type");
+    }
+
+    int r = args["r"].as<int>();
+    if (r < 0) {
+        error("Max ranks must be positive!");
+    }
+
     const bool simple = args.count("simple");
     ofstream nout("/dev/null");
     ostream &sout = simple ? cout : nout;
@@ -176,17 +254,24 @@ int main(int argc, char *argv[]) {
     if (vpos < 0) {
         vpos = d / 2;
     }
-    vout << "n = " << n << ", d = " << d << ", N = " << N << endl;
-    vout << "sparse: " << static_cast<double>(N) / pow(n, d) << endl;
+    string n_list_str = "[";
+    for (int n : n_list) {
+        n_list_str.append(to_string(n));
+        n_list_str.append(", ");
+    }
+    n_list_str.erase(n_list_str.size() - 2);
+    n_list_str.push_back(']');
+    vout << "n = " << n_list_str << ", d = " << d << ", N = " << N << endl;
+    vout << "sparse: " << static_cast<double>(N) / m << endl;
     
     vout << "--------------------FLATT--------------------" << endl;
-    run_test([vpos](auto &&x) { return sptensor2tt(x, vpos); }, x, sout, vout);
+    run_test([vpos, r](auto &&x) { return sptensor2tt(x, vpos, r); }, x, sout, vout);
 
     if (args.count("ttsvd")) {
         vout << "--------------------TTSVD--------------------" << endl;
         auto y(x);
         y.use_dense_representation();
-        run_test([](auto &&x) { return TTTensor(x); }, y, sout, vout);
+        run_test([r](auto &&x) { return TTTensor(x, EPSILON, r); }, y, sout, vout);
     }
     else {
         sout << 0 << endl;
@@ -196,6 +281,10 @@ int main(int argc, char *argv[]) {
         vout << "----------------Random TTSVD-----------------" << endl;
         auto y(x);
         y.use_dense_representation();
+        int r = args["rttsvd"].as<int>();
+        if (r < 0) {
+            error("Target ranks must be positive!");
+        }
         run_test([d, r](auto &&x) { return randomTTSVD(x, vector<size_t>(d-1, r), vector<size_t>(d-1, 0)); }, y, sout, vout);
     }
     else {

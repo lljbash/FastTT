@@ -17,17 +17,17 @@ auto depar01(Tensor a) {
     const size_t nrows = a.dimensions.at(0);
     const size_t ncols = a.dimensions.at(1);
     
-    vector<size_t> a_col_nze(ncols, numeric_limits<size_t>::max());
+    vector a_col_nze(ncols, numeric_limits<size_t>::max());
     a.use_sparse_representation();
     const auto &data = a.get_sparse_data();
-    for (const auto &entry : data) {
-        auto indices = Tensor::position_to_multiIndex(entry.first, a.dimensions);
+    for (const auto &[index, value] : data) {
+        auto indices = Tensor::position_to_multiIndex(index, a.dimensions);
         size_t index_row = indices.at(0);
         size_t index_col = indices.at(1);
         a_col_nze.at(index_col) = index_row;
     }
     
-    vector<size_t> hashmap(nrows, numeric_limits<size_t>::max());
+    vector hashmap(nrows, numeric_limits<size_t>::max());
     vector<vector<size_t>> b_indices;
     vector<vector<size_t>> t_indices;
     size_t cnt = 0;
@@ -44,8 +44,8 @@ auto depar01(Tensor a) {
         t_indices.push_back({newid, i});
     }
     
-    vector<size_t> b_size{nrows, cnt};
-    vector<size_t> t_size{cnt, ncols};
+    vector b_size{nrows, cnt};
+    vector t_size{cnt, ncols};
     map<size_t, value_t> b_data;
     map<size_t, value_t> t_data;
     for (const auto &entry : b_indices) {
@@ -62,7 +62,7 @@ auto depar01(Tensor a) {
     auto t = Tensor(t_size, Tensor::Representation::Sparse, Tensor::Initialisation::None);
     t.get_unsanitized_sparse_data() = move(t_data);
     
-    return make_tuple(move(b), move(t));
+    return tuple(move(b), move(t));
 }
 
 void parrounding(TTTensor &a, size_t vpos) {
@@ -93,12 +93,15 @@ void parrounding(TTTensor &a, size_t vpos) {
     }
 }
 
-void ttrounding(TTTensor &a, size_t vpos) {
+void ttrounding(TTTensor &a, size_t vpos, int max_rank) {
+    if (max_rank < 0) {
+        max_rank = 0;
+    }
     const size_t d = a.degree();
     for (size_t i = vpos; i < d-1; ++i) {
         Tensor U, S, Vt;
         a.component(i).use_dense_representation();
-        calculate_svd(U, S, Vt, a.component(i), 2, 0, EPSILON);
+        calculate_svd(U, S, Vt, a.component(i), 2, max_rank, EPSILON);
         a.set_component(i, move(U));
         auto lhs = contract(S, Vt, 1);
         a.set_component(i+1, contract(lhs, a.component(i+1), 1));
@@ -106,14 +109,14 @@ void ttrounding(TTTensor &a, size_t vpos) {
     for (size_t i = vpos; i > 0; --i) {
         Tensor U, S, Vt;
         a.component(i).use_dense_representation();
-        calculate_svd(U, S, Vt, a.component(i), 1, 0, EPSILON);
+        calculate_svd(U, S, Vt, a.component(i), 1, max_rank, EPSILON);
         a.set_component(i, move(Vt));
         auto rhs = contract(U, S, 1);
         a.set_component(i-1, contract(a.component(i-1), rhs, 1));
     }
 }
 
-TTTensor sptensor2tt(Tensor a, int vpos) {
+TTTensor sptensor2tt(Tensor a, int vpos, int max_rank) {
     const size_t d = a.degree();
     REQUIRE(d >= 2, "Invalid Tensor");
     vpos %= d;
@@ -130,10 +133,10 @@ TTTensor sptensor2tt(Tensor a, int vpos) {
     for (size_t i = vpos + 1; i < d; ++i) {
         pn *= n.at(i);
     }
-    for (const auto &entry : data) {
-        const size_t in_pos = entry.first / pn % n.at(vpos);
-        const size_t out_pos = entry.first - in_pos * pn;
-        submats[out_pos].emplace_back(in_pos, entry.second);
+    for (const auto &[index, value] : data) {
+        const size_t in_pos = index / pn % n.at(vpos);
+        const size_t out_pos = index - in_pos * pn;
+        submats[out_pos].emplace_back(in_pos, value);
     }
     
     const size_t r = submats.size();
@@ -154,10 +157,8 @@ TTTensor sptensor2tt(Tensor a, int vpos) {
                 u.component(i).operator[]({nleft, md.at(i), nright}) = 1;
             }
             else {
-                for (const auto &entry : submat.second) {
-                    const size_t in_pos = entry.first;
-                    const value_t v = entry.second;
-                    u.component(i).operator[]({nleft, in_pos, nright}) = v;
+                for (const auto &[index, value] : submat.second) {
+                    u.component(i).operator[]({nleft, index, nright}) = value;
                 }
             }
         }
@@ -166,7 +167,7 @@ TTTensor sptensor2tt(Tensor a, int vpos) {
     
     parrounding(u, vpos);
 
-    ttrounding(u, vpos);
+    ttrounding(u, vpos, max_rank);
     
     return u;
 }
