@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
         ("d", "Parameter d of the tensor", cxxopts::value<int>()->default_value("10"))
         ("l,n_list", "Use a list of n instead of n^d", cxxopts::value<string>())
         ("N,nnz", "The number of nonzero elements of the random generated tensor", cxxopts::value<int>()->default_value("500"))
-        ("F,fixed_rank", "Generate fixed-rank tesors", cxxopts::value<int>()->implicit_value("50"))
+        ("F,fixed_rank", "Generate fixed-rank tesors", cxxopts::value<int>()->default_value("0"))
         ("s,sparsity", "The sparsity of generated cores", cxxopts::value<double>()->default_value("0.02"))
         ("p", "Parameter p of FastTT", cxxopts::value<int>()->default_value("-1"))
         ("r,max_rank", "Max ranks of the target tensor train", cxxopts::value<int>()->default_value(to_string(numeric_limits<int>::max())))
@@ -100,20 +100,17 @@ int main(int argc, char *argv[]) {
     if (args.count("random")) {
         N = args["N"].as<int>();
         double sp = args["s"].as<double>();
+        int r = args["fixed_rank"].as<int>();
         if (!(N >= 0)) {
             error("N must be a positive integer!");
         }
         if (!(sp > 0 && sp < 1)) {
             error("sp must be a real number between 0 and 1!");
         }
-        if (!args.count("fixed_rank")) {
+        if (!(r > 0)) {
             x = Tensor::random(vector<size_t>(n_list), static_cast<size_t>(N));
         }
         else {
-            int r = args["fixed_rank"].as<int>();
-            if (!(r > 0)) {
-                error("r must be a positive integer!");
-            }
             x = Tensor::random({n_list.front(), static_cast<size_t>(r)}, n_list.front() * r * sp);
             for (int i = 1; i < d - 1; ++i) {
                 auto n = n_list.at(i);
@@ -251,9 +248,6 @@ int main(int argc, char *argv[]) {
     ostream &vout = !simple ? cout : nout;
     
     int vpos = args["p"].as<int>();
-    if (vpos < 0) {
-        vpos = d / 2;
-    }
     string n_list_str = "[";
     for (int n : n_list) {
         n_list_str.append(to_string(n));
@@ -271,7 +265,7 @@ int main(int argc, char *argv[]) {
         vout << "--------------------TTSVD--------------------" << endl;
         auto y(x);
         y.use_dense_representation();
-        run_test([r](auto &&x) { return TTTensor(x, EPSILON, r); }, y, sout, vout);
+        run_test([r](auto &&x) { return TTTensor(x, 1e-2, r); }, y, sout, vout);
     }
     else {
         sout << 0 << endl;

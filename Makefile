@@ -1,4 +1,4 @@
-CXX = g++
+CXX = g++-8
 CXXFLAGS = -std=c++17 -Wall -Wextra
 DEBUG ?= 0
 DEBUG_FLAGS = -Og -DDEBUG -g
@@ -15,6 +15,11 @@ ifeq ($(DEBUG), 1)
 	CXXFLAGS += $(DEBUG_FLAGS)
 else
 	CXXFLAGS += $(RELEASE_FLAGS)
+endif
+
+PG ?= 0
+ifeq ($(PG), 1)
+	CXXFLAGS += -pg
 endif
 
 .PHONY: all clean
