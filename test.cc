@@ -57,6 +57,7 @@ int main(int argc, char *argv[]) {
         ("s,sparsity", "The sparsity of generated cores", cxxopts::value<double>()->default_value("0.02"))
         ("p", "Parameter p of FastTT", cxxopts::value<int>()->default_value("-1"))
         ("r,max_rank", "Max ranks of the target tensor train", cxxopts::value<int>()->default_value(to_string(numeric_limits<int>::max())))
+        ("e,epsilon", "Desired tolerated relative error", cxxopts::value<double>()->default_value("1e-14"))
         ("ttsvd", "Test TT-SVD")
         ("rttsvd", "Test Randomized TT-SVD for given target rank", cxxopts::value<int>()->implicit_value("10"))
         ("S,simple", "Output simple result")
@@ -241,6 +242,10 @@ int main(int argc, char *argv[]) {
     if (r < 0) {
         error("Max ranks must be positive!");
     }
+    double eps = args["e"].as<double>();
+    if (eps <= 0) {
+        error("Epsilon must be positive!");
+    }
 
     const bool simple = args.count("simple");
     ofstream nout("/dev/null");
@@ -259,13 +264,13 @@ int main(int argc, char *argv[]) {
     vout << "sparse: " << static_cast<double>(N) / m << endl;
     
     vout << "--------------------FLATT--------------------" << endl;
-    run_test([vpos, r](auto &&x) { return sptensor2tt(x, vpos, r); }, x, sout, vout);
+    run_test([vpos, r, eps](auto &&x) { return sptensor2tt(x, vpos, r, eps); }, x, sout, vout);
 
     if (args.count("ttsvd")) {
         vout << "--------------------TTSVD--------------------" << endl;
         auto y(x);
         y.use_dense_representation();
-        run_test([r](auto &&x) { return TTTensor(x, 1e-2, r); }, y, sout, vout);
+        run_test([r, eps](auto &&x) { return TTTensor(x, eps, r); }, y, sout, vout);
     }
     else {
         sout << 0 << endl;

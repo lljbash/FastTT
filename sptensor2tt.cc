@@ -157,14 +157,14 @@ void parrounding(TTTensor &a, size_t vpos) {
     }
 }
 
-int64_t estimate_ttrounding_flops(int nnv, vector<size_t> dims, int vpos, int max_rank) {
+int64_t estimate_ttrounding_flops(/*int nnv*/vector<int> current_ranks, vector<size_t> dims, int vpos, int max_rank) {
     if (max_rank < 0) {
         max_rank = numeric_limits<int>::max();
     }
     const int d = dims.size();
-    vector current_ranks(d+1, nnv);
-    current_ranks[0] = 1;
-    current_ranks[d] = 1;
+    //vector current_ranks(d+1, nnv);
+    //current_ranks[0] = 1;
+    //current_ranks[d] = 1;
     vector final_ranks(current_ranks);
     for (int i = 0; i < d; ++i) {
         if (max_rank < final_ranks[i+1]) {
@@ -214,43 +214,68 @@ int64_t estimate_ttrounding_flops(int nnv, vector<size_t> dims, int vpos, int ma
     for (int i = vpos+1; i < d-1; ++i) {
         flops += svd_flops(final_ranks[i]*dims[i], current_ranks[i+1]);
     }
+    for (int i = d-1; i > vpos; --i) {
+        flops += svd_flops(final_ranks[i], dims[i]*final_ranks[i+1]) / 5; // QR flops
+    }
     for (int i = vpos; i > 0; --i) {
         flops += svd_flops(final_ranks[i+1]*dims[i], current_ranks[i]);
     }
     return flops;
 }
 
-void ttrounding(TTTensor &a, size_t vpos, int max_rank) {
+void ttrounding(TTTensor &a, size_t vpos, int max_rank, double eps) {
     if (max_rank < 0) {
         max_rank = 0;
     }
     const size_t d = a.degree();
+    auto delta = eps / sqrt(d);
     for (size_t i = vpos; i < d-1; ++i) {
         Tensor U, S, Vt;
         a.component(i).use_dense_representation();
-        calculate_svd(U, S, Vt, a.component(i), 2, max_rank, EPSILON);
+        calculate_svd(U, S, Vt, a.component(i), 2, max_rank, delta);
         a.set_component(i, move(U));
         auto lhs = contract(S, Vt, 1);
         a.set_component(i+1, contract(lhs, a.component(i+1), 1));
     }
+    for (size_t i = d-1; i > vpos; --i) {
+        Tensor Q, R;
+        a.component(i).use_dense_representation();
+        calculate_rq(R, Q, a.component(i), 1);
+        a.set_component(i, move(Q));
+        a.set_component(i-1, contract(a.component(i-1), R, 1));
+    }
     for (size_t i = vpos; i > 0; --i) {
         Tensor U, S, Vt;
         a.component(i).use_dense_representation();
-        calculate_svd(U, S, Vt, a.component(i), 1, max_rank, EPSILON);
+        calculate_svd(U, S, Vt, a.component(i), 1, max_rank, delta);
         a.set_component(i, move(Vt));
         auto rhs = contract(U, S, 1);
         a.set_component(i-1, contract(a.component(i-1), rhs, 1));
     }
 }
 
-TTTensor sptensor2tt(Tensor a, int vpos, int max_rank) {
+TTTensor sptensor2tt(Tensor a, int vpos, int max_rank, double eps) {
     a.use_sparse_representation();
 
     if (int d = a.degree(); vpos < 0 || vpos >= d) {
+        vector temp_rank(a.degree()+1, 1);
+        for (int d : vector{0, a.degree()-1}) {
+            auto u = extract_subvector(a, d);
+            parrounding(u, d);
+            for (size_t dd = 1; dd < a.degree(); ++dd) {
+                if (static_cast<int>(u.rank(dd-1)) > temp_rank[dd]) {
+                    temp_rank[dd] = u.rank(dd-1);
+                }
+            }
+        }
+        for (auto r : temp_rank) {
+            cout << r << " ";
+        }
+        cout << endl;
         auto min_flops = numeric_limits<int64_t>::max();
         for (int i = 0; i < d; ++i) {
-            int nnv = count_subvector(a, i);
-            auto flops = estimate_ttrounding_flops(nnv, a.dimensions, i, max_rank);
+            //int nnv = count_subvector(a, i);
+            auto flops = estimate_ttrounding_flops(temp_rank, a.dimensions, i, max_rank);
             cout << flops << endl;
             if (flops < min_flops) {
                 min_flops = flops;
@@ -262,7 +287,11 @@ TTTensor sptensor2tt(Tensor a, int vpos, int max_rank) {
 
     auto u = extract_subvector(a, vpos);
     parrounding(u, vpos);
-    ttrounding(u, vpos, max_rank);
+    for (auto r : u.ranks()) {
+        cout << r << " ";
+    }
+    cout << endl;
+    ttrounding(u, vpos, max_rank, eps);
     
     return u;
 }
