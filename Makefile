@@ -1,5 +1,5 @@
 CXX = g++-8
-CXXFLAGS = -std=c++17 -Wall -Wextra
+CXXFLAGS = -std=c++17 -Wall -Wextra -Wfloat-conversion
 DEBUG ?= 0
 DEBUG_FLAGS = -Og -DDEBUG -g
 RELEASE_FLAGS = -O3 -DNDEBUG -funroll-loops -march=native -Xpreprocessor -fopenmp

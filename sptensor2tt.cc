@@ -228,7 +228,7 @@ void ttrounding(TTTensor &a, size_t vpos, int max_rank, double eps) {
         max_rank = 0;
     }
     const size_t d = a.degree();
-    auto delta = eps / sqrt(d);
+    auto delta = eps / sqrt(d-1);
     for (size_t i = vpos; i < d-1; ++i) {
         Tensor U, S, Vt;
         a.component(i).use_dense_representation();
@@ -287,10 +287,6 @@ TTTensor sptensor2tt(Tensor a, int vpos, int max_rank, double eps) {
 
     auto u = extract_subvector(a, vpos);
     parrounding(u, vpos);
-    for (auto r : u.ranks()) {
-        cout << r << " ";
-    }
-    cout << endl;
     ttrounding(u, vpos, max_rank, eps);
     
     return u;

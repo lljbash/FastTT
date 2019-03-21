@@ -25,13 +25,16 @@ void error(string message = "Error!") {
 }
 
 void run_test(const std::function<TTTensor(const Tensor&)> &f, const Tensor &x, ostream &sout, ostream &vout) {
+    auto c_begin = clock();
     auto begin = chrono::high_resolution_clock::now();
     auto tt = f(x);
+    auto c_end = clock();
     auto end = chrono::high_resolution_clock::now();
     auto xx = Tensor(tt);
     auto eps = (x - xx).frob_norm() / x.frob_norm();
     
     vout << "time: " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << "ms"  << endl;
+    vout << "cputime: " << 1000.0 * (c_end-c_begin) / CLOCKS_PER_SEC << "ms" << endl;
     sout << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << endl;
     vout << "eps: " << setprecision(10) << eps << endl;
     vout << "ranks: ";
@@ -45,7 +48,7 @@ int main(int argc, char *argv[]) {
     cxxopts::Options options("test", "Test fast T2TT.");
     options.add_options()
         ("f,file", "Input file name", cxxopts::value<string>())
-        ("t,type", "Input file type: graph / image", cxxopts::value<string>()->default_value("unspecific"))
+        ("t,type", "Input file type: graph / image / tensor", cxxopts::value<string>()->default_value("unspecific"))
         ("U,undirected", "If input graph is undirected")
         ("O,obeserved", "The obeservation ratio of the image", cxxopts::value<double>()->default_value("0.01"))
         ("R,random", "Use random generated n^d tesors as input instead")
@@ -60,7 +63,9 @@ int main(int argc, char *argv[]) {
         ("e,epsilon", "Desired tolerated relative error", cxxopts::value<double>()->default_value("1e-14"))
         ("ttsvd", "Test TT-SVD")
         ("rttsvd", "Test Randomized TT-SVD for given target rank", cxxopts::value<int>()->implicit_value("10"))
+        ("nofasttt", "Do not test FastTT")
         ("S,simple", "Output simple result")
+        ("save", "Save the random tensor as a csv file", cxxopts::value<string>()->default_value("backup.csv"))
         ;
     const auto args = [&options, &argc, &argv]() {
         try {
@@ -112,18 +117,25 @@ int main(int argc, char *argv[]) {
             x = Tensor::random(vector<size_t>(n_list), static_cast<size_t>(N));
         }
         else {
-            x = Tensor::random({n_list.front(), static_cast<size_t>(r)}, n_list.front() * r * sp);
+            x = Tensor::random({n_list.front(), static_cast<size_t>(r)}, static_cast<size_t>(n_list.front() * r * sp));
             for (int i = 1; i < d - 1; ++i) {
                 auto n = n_list.at(i);
                 auto y = Tensor::random({static_cast<size_t>(r), n, static_cast<size_t>(r)},
-                                        r * n * r * sp);
+                                        static_cast<size_t>(r * n * r * sp));
                 contract(x, x, y, 1);
             }
-            auto y = Tensor::random({static_cast<size_t>(r), n_list.back()}, r * n_list.back() * sp);
+            auto y = Tensor::random({static_cast<size_t>(r), n_list.back()}, static_cast<size_t>(r * n_list.back() * sp));
             contract(x, x, y, 1);
         }
         x.use_sparse_representation();
         N = x.get_sparse_data().size();
+        if (args.count("save")) {
+            ofstream fout(args["save"].as<string>());
+            fout.precision(std::numeric_limits<value_t>::digits10 + 3);
+            for (auto [poistion, value] : x.get_sparse_data()) {
+                fout << poistion << "\t" << value << endl;
+            }
+        }
     }
     else if (type == "graph") {
         ifstream fin(args["file"].as<string>());
@@ -234,6 +246,24 @@ int main(int argc, char *argv[]) {
         x = Tensor(n_list, Tensor::Representation::Sparse, Tensor::Initialisation::None);
         x.get_unsanitized_sparse_data() = move(x_data);
     }
+    else if (type == "tensor") {
+        ifstream fin(args["file"].as<string>());
+        if (!fin.is_open()) {
+            cerr << "Cannot open file " << args["file"].as<string>() << endl;
+            exit(-1);
+        }
+        map<size_t, value_t> x_data;
+        for (string line; getline(fin, line); ) {
+            istringstream line_in(line);
+            size_t position;
+            value_t value;
+            line_in >> position >> value;
+            x_data.try_emplace(position, value);
+        }
+        N = x_data.size();
+        x = Tensor(n_list, Tensor::Representation::Sparse, Tensor::Initialisation::None);
+        x.get_unsanitized_sparse_data() = move(x_data);
+    }
     else {
         error("You must specific a valid file type");
     }
@@ -263,8 +293,10 @@ int main(int argc, char *argv[]) {
     vout << "n = " << n_list_str << ", d = " << d << ", N = " << N << endl;
     vout << "sparse: " << static_cast<double>(N) / m << endl;
     
-    vout << "--------------------FLATT--------------------" << endl;
-    run_test([vpos, r, eps](auto &&x) { return sptensor2tt(x, vpos, r, eps); }, x, sout, vout);
+    if (!args.count("nofasttt")) {
+        vout << "--------------------FastTT-------------------" << endl;
+        run_test([vpos, r, eps](auto &&x) { return sptensor2tt(x, vpos, r, eps); }, x, sout, vout);
+    }
 
     if (args.count("ttsvd")) {
         vout << "--------------------TTSVD--------------------" << endl;
