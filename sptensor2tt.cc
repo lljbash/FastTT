@@ -224,18 +224,33 @@ int64_t estimate_ttrounding_flops(/*int nnv*/vector<int> current_ranks, vector<s
 }
 
 void ttrounding(TTTensor &a, size_t vpos, int max_rank, double eps) {
-    if (max_rank < 0) {
+    constexpr double kAlpha = 1.5;
+    static_assert(kAlpha >= 1);
+    if (max_rank <= 0) {
         max_rank = 0;
     }
     const size_t d = a.degree();
-    auto delta = eps / sqrt(d-1);
+    int rnsvd = d - vpos - 1;
+    int lnsvd = vpos;
+    double reps = eps * sqrt(rnsvd) / (sqrt(lnsvd) + sqrt(rnsvd));
+    double leps = eps - reps;
+    auto norm_a = a.component(vpos).frob_norm();
+    //cout << lnsvd << " " << rnsvd << " " << leps << " " << reps << endl;
     for (size_t i = vpos; i < d-1; ++i) {
         Tensor U, S, Vt;
         a.component(i).use_dense_representation();
-        calculate_svd(U, S, Vt, a.component(i), 2, max_rank, delta);
+        double delta = rnsvd == 1 && lnsvd == 0 ? reps : min(leps + reps, reps * kAlpha / sqrt(rnsvd));
+        delta = min(max(delta, 0.), 1. - numeric_limits<value_t>::epsilon());
+        //cout << delta << endl;
+        double svdeps = calculate_svd(U, S, Vt, a.component(i), 2, max_rank, max_rank == 0 ? delta : 0) / norm_a;
+        //cout << svdeps << endl;
+        --rnsvd;
+        reps = reps * reps - svdeps * svdeps;
+        reps = reps >= 0 ? sqrt(reps) : -sqrt(-reps);
         a.set_component(i, move(U));
         auto lhs = contract(S, Vt, 1);
         a.set_component(i+1, contract(lhs, a.component(i+1), 1));
+        //cout << lnsvd << " " << rnsvd << " " << leps << " " << reps<< endl;
     }
     for (size_t i = d-1; i > vpos; --i) {
         Tensor Q, R;
@@ -244,13 +259,24 @@ void ttrounding(TTTensor &a, size_t vpos, int max_rank, double eps) {
         a.set_component(i, move(Q));
         a.set_component(i-1, contract(a.component(i-1), R, 1));
     }
+    leps += reps;
+    reps = 0;
+    //cout << lnsvd << " " << rnsvd << " " << leps << " " << reps << endl;
     for (size_t i = vpos; i > 0; --i) {
         Tensor U, S, Vt;
         a.component(i).use_dense_representation();
-        calculate_svd(U, S, Vt, a.component(i), 1, max_rank, delta);
+        double delta = rnsvd == 0 && lnsvd == 1 ? leps : min(leps + reps, leps * kAlpha / sqrt(lnsvd));
+        delta = min(max(delta, 0.), 1. - numeric_limits<value_t>::epsilon());
+        //cout << delta << endl;
+        double svdeps = calculate_svd(U, S, Vt, a.component(i), 1, max_rank, max_rank == 0 ? delta : 0) / norm_a;
+        //cout << svdeps << endl;
+        --lnsvd;
+        leps = leps * leps - svdeps * svdeps;
+        leps = leps >= 0 ? sqrt(leps) : -sqrt(-leps);
         a.set_component(i, move(Vt));
         auto rhs = contract(U, S, 1);
         a.set_component(i-1, contract(a.component(i-1), rhs, 1));
+        //cout << lnsvd << " " << rnsvd << " " << leps << " " << reps << endl;
     }
 }
 

@@ -32,10 +32,12 @@ void run_test(const std::function<TTTensor(const Tensor&)> &f, const Tensor &x, 
     auto end = chrono::high_resolution_clock::now();
     auto xx = Tensor(tt);
     auto eps = (x - xx).frob_norm() / x.frob_norm();
+    auto walltime = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
+    auto cputime = 1000.0 * (c_end-c_begin) / CLOCKS_PER_SEC;
     
-    vout << "time: " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << "ms"  << endl;
-    vout << "cputime: " << 1000.0 * (c_end-c_begin) / CLOCKS_PER_SEC << "ms" << endl;
-    sout << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << endl;
+    vout << "walltime: " <<  walltime << "ms"  << endl;
+    vout << "cputime: " << cputime << "ms" << endl;
+    sout << cputime << endl;
     vout << "eps: " << setprecision(10) << eps << endl;
     vout << "ranks: ";
     for (auto r : tt.ranks()) {
@@ -59,13 +61,13 @@ int main(int argc, char *argv[]) {
         ("F,fixed_rank", "Generate fixed-rank tesors", cxxopts::value<int>()->default_value("0"))
         ("s,sparsity", "The sparsity of generated cores", cxxopts::value<double>()->default_value("0.02"))
         ("p", "Parameter p of FastTT", cxxopts::value<int>()->default_value("-1"))
-        ("r,max_rank", "Max ranks of the target tensor train", cxxopts::value<int>()->default_value(to_string(numeric_limits<int>::max())))
+        ("r,max_rank", "Max ranks of the target tensor train", cxxopts::value<int>()->default_value("0"))
         ("e,epsilon", "Desired tolerated relative error", cxxopts::value<double>()->default_value("1e-14"))
         ("ttsvd", "Test TT-SVD")
         ("rttsvd", "Test Randomized TT-SVD for given target rank", cxxopts::value<int>()->implicit_value("10"))
         ("nofasttt", "Do not test FastTT")
         ("S,simple", "Output simple result")
-        ("save", "Save the random tensor as a csv file", cxxopts::value<string>()->default_value("backup.csv"))
+        ("save", "Save the random tensor as a tsv file", cxxopts::value<string>()->default_value("backup.tsv"))
         ;
     const auto args = [&options, &argc, &argv]() {
         try {
@@ -302,7 +304,8 @@ int main(int argc, char *argv[]) {
         vout << "--------------------TTSVD--------------------" << endl;
         auto y(x);
         y.use_dense_representation();
-        run_test([r, eps](auto &&x) { return TTTensor(x, eps, r); }, y, sout, vout);
+        auto rr = r == 0 ? numeric_limits<int>::max() : r;
+        run_test([rr, eps](auto &&x) { return TTTensor(x, eps, rr); }, y, sout, vout);
     }
     else {
         sout << 0 << endl;
