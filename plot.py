@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 def exp11():
     t_sample_fasttt = [
@@ -127,19 +128,21 @@ def exp12():
 
 
 def exp4():
-    p = list(range(7))
-    e = [37.300, 37.297, 141.587, 36.487, 13.022, 12.508, 12.506]
-    t = [30.116, 30.407, 100.480, 17.392, 9.808, 9.184, 8.889]
+    p = list(range(1, 8))
+    e = [37480398105, 37476974005, 142307454005, 36487454005, 13077086005, 12559689325, 12557656400]
+    t = [49695, 43008.2, 158861, 28041, 23777.8, 21495.1, 21859.8]
+    e = np.array(e) / 1e9
+    t = np.array(t) / 1000
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
     lns1 = ax1.plot(p, e, c='r', label='Estimated FLOPs')
-    ax1.set_ylabel(r"GFLOP / $\sigma$")
-    ax1.set_ylim([0, 150])
+    ax1.set_ylabel(r"GFLOP / $C_{\mathrm{SVD}}$")
+    ax1.set_ylim([0, 180])
     ax2 = ax1.twinx()
-    lns2 = ax2.plot(p, t, c='b', label='Exact Runtime')
-    ax2.set_ylabel("Runtime / s")
-    ax2.set_ylim([0, 150])
-    ax2.set_xlabel("p")
+    lns2 = ax2.plot(p, t, c='b', label='Exact CPU time')
+    ax2.set_ylabel("CPU time (s)")
+    ax2.set_ylim([0, 180])
+    ax1.set_xlabel("p")
     lns = lns1 + lns2
     labs = [l.get_label() for l in lns]
     ax1.legend(lns, labs)
@@ -147,7 +150,7 @@ def exp4():
 
 
 if __name__ == "__main__":
-    # exp11()
-    # exp12()
+    exp11()
+    exp12()
     exp4()
 

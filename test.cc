@@ -32,13 +32,15 @@ void run_test(const std::function<TTTensor(const Tensor&)> &f, const Tensor &x, 
     auto end = chrono::high_resolution_clock::now();
     auto xx = Tensor(tt);
     auto eps = (x - xx).frob_norm() / x.frob_norm();
+    auto mse = pow((x - xx).frob_norm(), 2) / x.size;
     auto walltime = chrono::duration_cast<chrono::milliseconds>(end - begin).count();
     auto cputime = 1000.0 * (c_end-c_begin) / CLOCKS_PER_SEC;
     
     vout << "walltime: " <<  walltime << "ms"  << endl;
-    vout << "cputime: " << cputime << "ms" << endl;
-    sout << cputime << endl;
+    vout << "cputime: " << setprecision(6) << cputime << "ms" << endl;
+    sout << setprecision(6) << cputime << endl;
     vout << "eps: " << setprecision(10) << eps << endl;
+    vout << "mse: " << setprecision(6) << mse << endl;
     vout << "ranks: ";
     for (auto r : tt.ranks()) {
         vout << r << " ";
@@ -64,10 +66,10 @@ int main(int argc, char *argv[]) {
         ("r,max_rank", "Max ranks of the target tensor train", cxxopts::value<int>()->default_value("0"))
         ("e,epsilon", "Desired tolerated relative error", cxxopts::value<double>()->default_value("1e-14"))
         ("ttsvd", "Test TT-SVD")
-        ("rttsvd", "Test Randomized TT-SVD for given target rank", cxxopts::value<int>()->implicit_value("10"))
+        ("rttsvd", "Test Randomized TT-SVD for given target rank", cxxopts::value<int>()->default_value("10"))
         ("nofasttt", "Do not test FastTT")
         ("S,simple", "Output simple result")
-        ("save", "Save the random tensor as a tsv file", cxxopts::value<string>()->default_value("backup.tsv"))
+        ("save", "Save the tensor as a tsv file", cxxopts::value<string>()->default_value("backup.tsv"))
         ;
     const auto args = [&options, &argc, &argv]() {
         try {
@@ -131,13 +133,6 @@ int main(int argc, char *argv[]) {
         }
         x.use_sparse_representation();
         N = x.get_sparse_data().size();
-        if (args.count("save")) {
-            ofstream fout(args["save"].as<string>());
-            fout.precision(std::numeric_limits<value_t>::digits10 + 3);
-            for (auto [poistion, value] : x.get_sparse_data()) {
-                fout << poistion << "\t" << value << endl;
-            }
-        }
     }
     else if (type == "graph") {
         ifstream fin(args["file"].as<string>());
@@ -270,6 +265,14 @@ int main(int argc, char *argv[]) {
         error("You must specific a valid file type");
     }
 
+    if (args.count("save")) {
+        ofstream fout(args["save"].as<string>());
+        fout.precision(std::numeric_limits<value_t>::digits10 + 3);
+        for (auto [poistion, value] : x.get_sparse_data()) {
+            fout << poistion << "\t" << value << endl;
+        }
+    }
+
     int r = args["r"].as<int>();
     if (r < 0) {
         error("Max ranks must be positive!");
@@ -319,7 +322,7 @@ int main(int argc, char *argv[]) {
         if (r < 0) {
             error("Target ranks must be positive!");
         }
-        run_test([d, r](auto &&x) { return randomTTSVD(x, vector<size_t>(d-1, r), vector<size_t>(d-1, 0)); }, y, sout, vout);
+        run_test([d, r](auto &&x) { return randomTTSVD(x, vector<size_t>(d-1, r), vector<size_t>(d-1, 10)); }, y, sout, vout);
     }
     else {
         sout << 0 << endl;

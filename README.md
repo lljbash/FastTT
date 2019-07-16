@@ -1,4 +1,4 @@
-# FLATT
+# FastTT
 
 ## Prerequisites
 

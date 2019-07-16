@@ -1,4 +1,4 @@
-CXX = g++-8
+CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -Wfloat-conversion
 DEBUG ?= 0
 DEBUG_FLAGS = -Og -DDEBUG -g

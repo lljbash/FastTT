@@ -10,10 +10,12 @@
 
 using namespace std;
 
+#define order degree
+
 namespace xerus {
 
 int count_subvector(Tensor &a, int vpos) {
-    const size_t d = a.degree();
+    const size_t d = a.order();
     TTTensor u(d);
     const auto &data = a.get_sparse_data();
     unordered_set<size_t> submats;
@@ -31,7 +33,7 @@ int count_subvector(Tensor &a, int vpos) {
 }
 
 TTTensor extract_subvector(Tensor &a, int vpos) {
-    const size_t d = a.degree();
+    const size_t d = a.order();
     TTTensor u(d);
     const auto &data = a.get_sparse_data();
     unordered_map<size_t, vector<pair<size_t, value_t>>> submats;
@@ -76,7 +78,7 @@ TTTensor extract_subvector(Tensor &a, int vpos) {
 }
 
 auto depar01(Tensor a) {
-    const size_t d = a.degree();
+    const size_t d = a.order();
     REQUIRE(d == 2, "Input of depar01 must be a matrix");
     const size_t nrows = a.dimensions.at(0);
     const size_t ncols = a.dimensions.at(1);
@@ -130,7 +132,7 @@ auto depar01(Tensor a) {
 }
 
 void parrounding(TTTensor &a, size_t vpos) {
-    const size_t d = a.degree();
+    const size_t d = a.order();
     for (size_t i = 0; i < vpos; ++i) {
         auto &comp = a.component(i);
         const auto n = comp.dimensions;
@@ -195,14 +197,14 @@ int64_t estimate_ttrounding_flops(/*int nnv*/vector<int> current_ranks, vector<s
             final_ranks[i+1] = prod;
         }
     }
-    for (auto r : current_ranks) {
-        cout << r << " ";
-    }
-    cout << endl;
-    for (auto r : final_ranks) {
-        cout << r << " ";
-    }
-    cout << endl;
+    //for (auto r : current_ranks) {
+        //cout << r << " ";
+    //}
+    //cout << endl;
+    //for (auto r : final_ranks) {
+        //cout << r << " ";
+    //}
+    //cout << endl;
     auto svd_flops = [](int n, int m) {
         return static_cast<int64_t>(n) * static_cast<int64_t>(m)
             * static_cast<int64_t>(min(n, m));
@@ -229,10 +231,11 @@ void ttrounding(TTTensor &a, size_t vpos, int max_rank, double eps) {
     if (max_rank <= 0) {
         max_rank = 0;
     }
-    const size_t d = a.degree();
+    const size_t d = a.order();
     int rnsvd = d - vpos - 1;
     int lnsvd = vpos;
-    double reps = eps * sqrt(rnsvd) / (sqrt(lnsvd) + sqrt(rnsvd));
+    double peps = eps / (sqrt(lnsvd) + sqrt(rnsvd));
+    double reps = peps * sqrt(rnsvd);
     double leps = eps - reps;
     auto norm_a = a.component(vpos).frob_norm();
     //cout << lnsvd << " " << rnsvd << " " << leps << " " << reps << endl;
@@ -241,6 +244,7 @@ void ttrounding(TTTensor &a, size_t vpos, int max_rank, double eps) {
         a.component(i).use_dense_representation();
         double delta = rnsvd == 1 && lnsvd == 0 ? reps : min(leps + reps, reps * kAlpha / sqrt(rnsvd));
         delta = min(max(delta, 0.), 1. - numeric_limits<value_t>::epsilon());
+        delta = peps;
         //cout << delta << endl;
         double svdeps = calculate_svd(U, S, Vt, a.component(i), 2, max_rank, max_rank == 0 ? delta : 0) / norm_a;
         //cout << svdeps << endl;
@@ -267,6 +271,7 @@ void ttrounding(TTTensor &a, size_t vpos, int max_rank, double eps) {
         a.component(i).use_dense_representation();
         double delta = rnsvd == 0 && lnsvd == 1 ? leps : min(leps + reps, leps * kAlpha / sqrt(lnsvd));
         delta = min(max(delta, 0.), 1. - numeric_limits<value_t>::epsilon());
+        delta = peps;
         //cout << delta << endl;
         double svdeps = calculate_svd(U, S, Vt, a.component(i), 1, max_rank, max_rank == 0 ? delta : 0) / norm_a;
         //cout << svdeps << endl;
@@ -283,12 +288,12 @@ void ttrounding(TTTensor &a, size_t vpos, int max_rank, double eps) {
 TTTensor sptensor2tt(Tensor a, int vpos, int max_rank, double eps) {
     a.use_sparse_representation();
 
-    if (int d = a.degree(); vpos < 0 || vpos >= d) {
-        vector temp_rank(a.degree()+1, 1);
-        for (int d : vector{0, a.degree()-1}) {
+    if (int d = a.order(); vpos < 0 || vpos >= d) {
+        vector temp_rank(a.order()+1, 1);
+        for (int d : vector{0, a.order()-1}) {
             auto u = extract_subvector(a, d);
             parrounding(u, d);
-            for (size_t dd = 1; dd < a.degree(); ++dd) {
+            for (size_t dd = 1; dd < a.order(); ++dd) {
                 if (static_cast<int>(u.rank(dd-1)) > temp_rank[dd]) {
                     temp_rank[dd] = u.rank(dd-1);
                 }
@@ -312,7 +317,9 @@ TTTensor sptensor2tt(Tensor a, int vpos, int max_rank, double eps) {
     }
 
     auto u = extract_subvector(a, vpos);
+    //for (auto r : u.ranks()) { cout << r << " "; } cout << endl;
     parrounding(u, vpos);
+    //for (auto r : u.ranks()) { cout << r << " "; } cout << endl;
     ttrounding(u, vpos, max_rank, eps);
     
     return u;

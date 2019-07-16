@@ -3,8 +3,9 @@
 
 import numpy as np
 
-alpha = [0.11, 0.12, 0.13, 0.14, 0.15, 0.17, 0.18]
-n = 30
+alpha = np.random.rand(7)
+alpha /= np.linalg.norm(alpha, 1)
+n = 40
 
 def index_to_position(index):
     p = 0
