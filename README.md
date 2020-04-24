@@ -10,4 +10,5 @@ It can be several times to several tens time faster than the widely-used TT-SVD 
 - [cxxopts](https://github.com/jarro2783/cxxopts)
 
 If you used this package, please cite the following paper:
-Lingjie Li, Wenjian Yu, and Kim Batselier, "Faster tensor train decomposition for sparse data," arXiv#1908.02721
+
+[1] Lingjie Li, Wenjian Yu, and Kim Batselier, "Faster tensor train decomposition for sparse data," arXiv#1908.02721
