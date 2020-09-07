@@ -9,7 +9,8 @@ If you used this package, please cite the following paper:
 ## Prerequisites
 
 - [g++](https://gcc.gnu.org/) version >= 7 or latest Clang
-- [Xerus](https://www.libxerus.org/) ([FastTT-paper-version](https://github.com/lljbash/xerus))
+- [Xerus](https://www.libxerus.org/): Please use [FastTT-paper-version](https://github.com/lljbash/xerus) for correct API. Compile with 
+Intel® Math Kernel Library for better reproduction.
 - [Boost](https://www.boost.org/)
 - [cxxopts](https://github.com/jarro2783/cxxopts)
 
